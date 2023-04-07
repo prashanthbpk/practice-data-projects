@@ -1,4 +1,0 @@
-%dw 2.0
-
-type auto_0a164054_58e2_4575_90d9_b08fa94114ee_Input_Payload = {| retryCount: Number |} | {|  |}
-
