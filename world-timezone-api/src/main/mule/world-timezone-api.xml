@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<http:listener-config name="HTTP_Listener_config" doc:name="HTTP Listener config" doc:id="605f1b27-176e-46d3-8f01-bf9282eb9d07" >
+		<http:listener-connection host="0.0.0.0" port="${http.port}" />
+	</http:listener-config>
+	<configuration-properties doc:name="Configuration properties" doc:id="43a7ec7a-e6f3-4d5a-b9c5-dd6793afa33f" file="test.properties" />
+	<flow name="world-timezone-apiFlow" doc:id="eaa74f38-ad18-46bc-9666-27eafe75d00d" >
+		<http:listener doc:name="Listener" doc:id="3ba77363-8641-4cf6-bdce-94c4c6b07879" config-ref="HTTP_Listener_config" path="/timezone"/>
+		<http:request method="GET" doc:name="Request" doc:id="f997983d-80e5-4cd4-a66d-545e1724a6d5" url="https://worldtimeapi.org/api/timezone/America/Argentina/Salta"/>
+		<ee:transform doc:name="Transform Message" doc:id="d2690bb3-b23d-43ed-b925-7ed35a45f900" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</flow>
+</mule>

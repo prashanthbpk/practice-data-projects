@@ -1,0 +1,132 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:validation="http://www.mulesoft.org/schema/mule/validation" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns:db="http://www.mulesoft.org/schema/mule/db"
+	xmlns:vm="http://www.mulesoft.org/schema/mule/vm" xmlns:jms="http://www.mulesoft.org/schema/mule/jms" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/jms http://www.mulesoft.org/schema/mule/jms/current/mule-jms.xsd
+http://www.mulesoft.org/schema/mule/vm http://www.mulesoft.org/schema/mule/vm/current/mule-vm.xsd
+http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/validation http://www.mulesoft.org/schema/mule/validation/current/mule-validation.xsd">
+	<jms:config name="JMS_Config" doc:name="JMS Config" doc:id="787e9369-31c1-44fc-9f1a-adcc0e4929ea" >
+		<jms:active-mq-connection username="admin" password="admin" >
+			<jms:factory-configuration brokerUrl="tcp://localhost:61616" />
+		</jms:active-mq-connection>
+	</jms:config>
+	<db:config name="Database_Config" doc:name="Database Config" doc:id="222e0c47-fe72-4ee3-b1df-34df276f4c0e" >
+		<db:generic-connection url="jdbc:h2:tcp://localhost/~/test" driverClassName="org.h2.Driver" user="sa" />
+	</db:config>
+	<vm:config name="VM_Config" doc:name="VM Config" doc:id="5925d317-43f1-4fbc-924c-75cd5ec6134e" >
+		<vm:queues >
+			<vm:queue queueName="FromJMSPayload" />
+			<vm:queue queueName="retryQueue" queueType="PERSISTENT" />
+		</vm:queues>
+	</vm:config>
+	<validation:config name="Validation_Config" doc:name="Validation Config" doc:id="8d710f41-9942-4949-9644-0aa306d63268" />
+	<flow name="jmsFlow" doc:id="51744b85-b598-4c80-804e-a20f180678fb">
+		<jms:listener doc:name="On New Message" doc:id="42e8b3ec-5bda-4e34-a728-15dec0f3391c" config-ref="JMS_Config" destination="ActiveMQ-queue" inboundContentType="application/json">
+			<jms:consumer-type>
+				<jms:queue-consumer />
+			</jms:consumer-type>
+		</jms:listener>
+		<ee:transform doc:name="Transform Message" doc:id="cb704439-a000-4326-8b35-0c6b1e570169">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/java
+---
+{
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables>
+				<ee:set-variable variableName="initialPayloadFromJMS"><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<logger level="INFO" doc:name="Logger" doc:id="b736d9f8-e878-4a9b-9460-aa8d7182bc56" message="Message from JMS #[vars.initialPayloadFromJMS]" />
+		<scatter-gather doc:name="Scatter-Gather" doc:id="20c2abd8-c668-4522-847a-3c298883978f">
+			<route>
+				<db:insert doc:name="Insert" doc:id="c6444085-e13e-42bc-8bf2-c41f0f159d5b" config-ref="Database_Config">
+					<db:sql><![CDATA[insert into employee(NAME, ROLE, STATUS, EMAILID) values(:NAME, :ROLE, :STATUS, :EMAILID)]]></db:sql>
+					<db:input-parameters><![CDATA[#[{
+	"NAME" : vars.initialPayloadFromJMS.name,
+	"ROLE" : vars.initialPayloadFromJMS.role,
+	"STATUS" : vars.initialPayloadFromJMS.status,
+	"EMAILID" : vars.initialPayloadFromJMS.email_id
+}]]]></db:input-parameters>
+				</db:insert>
+			</route>
+			<route>
+				<vm:publish queueName="FromJMSPayload" doc:name="Publish" doc:id="65b1c339-15d3-45b4-b7cf-a06a51d3ed5a" config-ref="VM_Config">
+					<vm:content ><![CDATA[#[vars.initialPayloadFromJMS]]]></vm:content>
+				</vm:publish>
+			</route>
+		</scatter-gather>
+	</flow>
+	<flow name="jmsFlow-2" doc:id="658cf0da-107f-48f3-be32-73512b9f7a16" >
+		<vm:listener doc:name="Listener" doc:id="b26e527e-43c8-457d-a043-62a1dd41f607" config-ref="VM_Config" queueName="FromJMSPayload"/>
+		<choice doc:name="Choice" doc:id="66a5c98f-530e-4f48-969c-d361dfcf5a72">
+			<when expression='#[payload.status == "active"]'>
+				<ee:transform doc:name="Transform Message" doc:id="cc92faa1-d33d-4476-97db-03fdc501e863">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/java
+---
+{}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="afterTransformation"><![CDATA[%dw 2.0
+output application/json
+---
+payload mapObject {
+	($$) : upper($)
+}]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+				<db:insert doc:name="Insert" doc:id="9654410b-5af0-4c9c-bd30-81296fa39156" config-ref="Database_Config">
+					<db:sql><![CDATA[insert into AFTERTRANSFORM(NAME, ROLE, STATUS, EMAILID) values(:NAME, :ROLE, :STATUS, :EMAILID)]]></db:sql>
+					<db:input-parameters><![CDATA[#[{
+	"NAME" : vars.afterTransformation.name,
+	"ROLE" : vars.afterTransformation.role,
+	"STATUS" : vars.afterTransformation.status,
+	"EMAILID" : vars.afterTransformation.email_id
+}]]]></db:input-parameters>
+				</db:insert>
+			</when>
+			<when expression='#[payload.status == "not-active"]'>
+				<ee:transform doc:name="Transform Message" doc:id="a1acd3c1-84a4-446d-9c3b-4e84d017aef1">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/java
+---
+{}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables>
+						<ee:set-variable variableName="afterTransformation"><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"message" : "user is not active"
+}]]></ee:set-variable>
+					</ee:variables>
+				</ee:transform>
+			</when>
+			<otherwise>
+				<raise-error doc:name="Raise error" doc:id="cd03da5a-8559-4dbe-96c8-681c6053fbec" type="STATUS:NOT_FOUND" description="Status not found in incoming payload" />
+			</otherwise>
+		</choice>
+		<jms:publish doc:name="Publish" doc:id="21cb0ad7-1ec3-4b29-8d59-8c270f1677c6" config-ref="JMS_Config" destination="Active-MQ-store">
+					<jms:message outboundContentType="application/json">
+				<jms:body><![CDATA[#[vars.afterTransformation]]]></jms:body>
+			</jms:message>
+				</jms:publish>
+		<logger level="INFO" doc:name="Logger" doc:id="92bfc347-1c90-404d-86fa-edc3a25094e8" message="Job finished.............." />
+		<error-handler>
+			<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" doc:id="2940021b-3cc7-47aa-836a-73a7b915bbf4" >
+				<vm:publish doc:name="Publish - retryQueue" doc:id="cc679ccb-ab53-41ad-befa-bd3951703196" config-ref="VM_Config"/>
+			</on-error-propagate>
+		</error-handler>
+	</flow>
+	<flow name="retry-flow" doc:id="66042814-2d21-437e-9995-66dedd6aa1fe" />
+</mule>
