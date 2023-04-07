@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:os="http://www.mulesoft.org/schema/mule/os" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/os http://www.mulesoft.org/schema/mule/os/current/mule-os.xsd">
+	<http:listener-config name="HTTP_Listener_config" doc:name="HTTP Listener config" doc:id="363d7515-a9ba-4707-8ae5-74b67deb0d68" >
+		<http:listener-connection host="0.0.0.0" port="8081" />
+	</http:listener-config>
+	<os:object-store name="Object_store" doc:name="Object store" doc:id="1feae534-7c80-410d-8cd0-cbf57c1558db" />
+	<flow name="retry-mechFlow" doc:id="5777c0a6-d99e-467d-ad94-7f42e811f628" >
+		<http:listener doc:name="Listener" doc:id="7649b79f-2898-4883-ae48-6be73a5c5ca1" config-ref="HTTP_Listener_config" path="/retry"/>
+		<until-successful maxRetries="40" doc:name="Until Successful" doc:id="7fd54454-377d-4b98-9a26-4b76129f6e19" millisBetweenRetries="2000">
+			<http:request method="GET" doc:name="Request" doc:id="d706b459-7367-4f46-9d39-22a030b511e5" url="http://worldtimeapi..org/api/timezone/America/Argentina/Salta" />
+		</until-successful>
+		<ee:transform doc:name="Transform Message" doc:id="0200b0f6-3171-434e-b56d-97a43fccfa55" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="outputPayload" ><![CDATA[%dw 2.0
+output application/json
+import module::custom_function
+---
+custom_function::Userdata("pasi")]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<logger level="INFO" doc:name="Logger" doc:id="9f2c5d48-3467-4621-8992-6a858bae8704" message="Logging payload ............... #[vars.outputPayload]"/>
+		<error-handler >
+			<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" doc:id="d8021cc1-45fb-418c-b622-018444eaba8a" type="HTTP:CONNECTIVITY">
+				<flow-ref doc:name="Flow Reference" doc:id="bac8f135-027f-46e4-86db-bbe23f9de79f" name="retry-mechFlow1-retryFlow"/>
+			</on-error-propagate>
+		</error-handler>
+	</flow>
+	<flow name="retry-mechFlow1-retryFlow" doc:id="0a164054-58e2-4575-90d9-b08fa94114ee" initialState="stopped">
+		<logger level="INFO" doc:name="Logger" doc:id="9373356e-1f35-4a60-983c-d87254f3f459" message="entry to retry flow"/>
+		<set-variable value="#[0 as Number]" doc:name="total" doc:id="7d724876-ea2c-4ba0-8a5f-30e200eae520" variableName="total"/>
+		<ee:transform doc:name="Transform Message" doc:id="c40fda07-9626-4efb-8fda-c58f6fa2f015" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+import module::custom_function
+var retryCountP = custom_function::retryCount as Number
+---
+{
+	retryCount : retryCountP as Number + 1
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<choice doc:name="Choice" doc:id="447562b6-c6e1-4e58-b8b3-c47e53002b21" >
+			<when expression="#[payload.retryCount as Number &lt;= 3]">
+				<flow-ref doc:name="Flow Reference" doc:id="f4932c34-b535-4903-a58d-e039485b646e" name="retry-mechFlow" />
+			</when>
+			<otherwise>
+				<logger level="INFO" doc:name="Logger" doc:id="121d7a80-d8ff-4218-8557-5593caed28a2" message="to dlq" />
+			</otherwise>
+		</choice>
+	</flow>
+</mule>
